@@ -1,0 +1,68 @@
+# This workflow will do a clean install of node dependencies, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
+name: Node.js CI
+
+on:
+  push:
+    branches: [main]
+
+defaults:
+  run:
+    working-directory: ./front
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Setup Node
+        uses: actions/setup-node@v2.1.2
+        with:
+          node-version: '14.x'
+
+      - name: Get Yarn Cache
+        id: yarn-cache
+        run: echo "::set-output name=dir::$(yarn cache dir)"
+
+      - name: Cache Dependencies
+        uses: actions/cache@v2
+        with:
+          path: ${{ steps.yarn-cache.outputs.dir }}
+          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-yarn-
+
+      - name: Package Module Installation
+        run: yarn install --frozen-lockfile
+
+      # - name: Code Testing
+      #   run: yarn test
+
+      - name: Build
+        run: yarn build
+
+      - name: AWS Credentials
+        uses: aws-actions/configure-aws-credentials@v1
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: 'ap-northeast-2'
+
+      - name: Sync S3
+        run: |
+          aws s3 sync --delete ./front/build/ s3://${{ secrets.AWS_S3_BUCKET_DEV }}
+
+      # - name: Replace S3 Cache /index.html
+      #   run: |
+      #     aws s3 cp s3://${{ secrets.AWS_S3_BUCKET_DEV }} s3://${{ secrets.AWS_S3_BUCKET_DEV }} --recursive --exclude \"*\" --include \"index.html\" --metadata-directive REPLACE --acl public-read --cache-control no-cache,must-revalidate
+
+      # - name: Replace S3 Cache /dist
+      #   run: |
+      #     aws s3 cp s3://${{ secrets.AWS_S3_BUCKET_DEV }}/dist s3://${{ secrets.AWS_S3_BUCKET_DEV }}/dist --recursive --metadata-directive REPLACE --acl public-read --cache-control max-age=2592000
+
+      # - name: Invalidate Cloudfront
+      #   run: |
+      #     aws cloudfront create-invalidation --distribution-id ${{ secrets.AWS_CLOUDFRONT_ID_DEV }} --paths "/index.html" "/reset.css"
